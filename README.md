@@ -25,14 +25,17 @@ Everything survives reboots and OS updates (all state lives in `/etc`,
 
 ## Bazzite (Steam Machine)
 
-Bazzite 43+ ships `umr`, the governor, and the CU live-manager in the base
-image — on those, OPT250 downloads nothing and just drives the bundled tools.
-What it adds over stock Bazzite: **defective-die safety** (Bazzite's built-in
-first-boot unlock enables every WGP blindly, including broken ones on a
-harvested die; OPT250 reads the fuse map and force-disables defects) and a
-**sane clock/voltage envelope** (stock config allows 2200 MHz @ 1000 mV, which
-we've measured at 100 °C+; OPT250 caps at 2000 MHz undervolted — within ~3% of
-the same performance at ~50 W less).
+If the BC-250 tools are already on the box (e.g. layered via rpm-ostree/COPR or
+set up by an earlier guide), OPT250 detects and reuses them — no downloads, no
+reboot. On a bare Bazzite it installs everything itself (governor release
+binary + umr built in a throwaway distrobox), also without an rpm-ostree
+layering reboot. Either way it then adds what the common guides skip:
+**defective-die safety** (the usual "enable all" unlock turns on every WGP
+blindly, including broken ones on a harvested die; OPT250 reads the fuse map
+and force-disables defects) and a **sane clock/voltage envelope** (the COPR
+governor's sample config allows 2200 MHz @ 1000 mV, which we've measured at
+100 °C+; OPT250 caps at 2000 MHz undervolted — within ~3% of the performance at
+~50 W less).
 
 Run as your normal user (not root):
 
