@@ -25,7 +25,7 @@ import argparse, glob, json, os, re, subprocess, sys, datetime
 GOVCFG = "/etc/cyan-skillfish-governor-smu/config.toml"
 GOVSVC = "cyan-skillfish-governor-smu"
 STATE = "/etc/opt250/profile.json"
-CULIVE = "/opt/opt250/cu-live-manager.sh"
+CULIVE_PATHS = ["/usr/local/bin/bc250-cu-live-manager", "/opt/opt250/cu-live-manager.sh"]
 
 # V/F curve shape validated under sustained soak on real hardware (anchor = the
 # 2000MHz point; every other point is a fixed offset below it).
@@ -71,9 +71,11 @@ def find_gpu():
 
 def build_config(p, mv):
     pts = sorted((f, max(VMIN, mv + off)) for f, off in OFFSETS)
+    # keep dbus on where Bazzite's cyan-skillfish-performance-mode helper uses it
+    dbus = "true" if os.path.exists("/usr/bin/cyan-skillfish-performance-mode") else "false"
     body = ('[timing.intervals]\nsample = 250\nadjust = 100_000\n'
             '[gpu-usage]\nfix-metrics = true\nmethod = "busy-flag"\nflush-every = 10\n'
-            '[gpu]\nset-method = "smu"\n[dbus]\nenabled = false\n'
+            '[gpu]\nset-method = "smu"\n[dbus]\nenabled = ' + dbus + '\n'
             '[frequency-range]\nmin = %d\nmax = %d\n'
             '[timing.ramp-rates]\nnormal = 1\nburst = 50\n'
             '[timing]\nburst-samples = 60\ndown-events = 5\n'
@@ -165,10 +167,12 @@ def status():
             try: mvolt = int(open(hw + "/in0_input").read())
             except (OSError, ValueError): pass
         print("  GPU       : %s  %s  vddgfx %smV" % (cur, "%dC" % temp if temp is not None else "?", mvolt))
-    if os.path.exists(CULIVE):
-        rc, out = sh("%s status 2>/dev/null | grep -i 'active & routed'" % CULIVE)
-        if out:
-            print("  CUs       : %s" % out.strip())
+    for culive in CULIVE_PATHS:
+        if os.path.exists(culive):
+            rc, out = sh("%s status 2>/dev/null | grep -i 'active & routed'" % culive)
+            if out:
+                print("  CUs       : %s" % out.strip())
+            break
 
 
 def main():

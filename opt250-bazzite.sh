@@ -35,7 +35,7 @@ get(){ local f="$1" dst="$2"
 runs(){ "$1" -h >/dev/null 2>&1 || [ $? -lt 126 ]; }
 
 say "0. pre-flight checks"
-sudo -v
+sudo true   # prime sudo (NOT `sudo -v` — it demands a password when the user also matches a non-NOPASSWD wheel rule)
 if ! lspci -nn 2>/dev/null | grep -qi "1002:13fe"; then
   echo "ERROR: no BC-250 GPU (1002:13fe) found on this host."; exit 1
 fi
@@ -53,8 +53,8 @@ command -v distrobox >/dev/null || { echo "ERROR: distrobox not found (it ships 
 echo "  BC-250 detected, UMA OK"
 
 say "1. umr (GPU register tool — needed by the CU unlock)"
-if [ -x /usr/local/bin/umr ] && runs /usr/local/bin/umr; then
-  echo "  umr already installed"
+if command -v umr >/dev/null 2>&1 && runs "$(command -v umr)"; then
+  echo "  umr present ($(command -v umr)) — Bazzite 43+ ships it"
 else
   FEDORA_VER="$(. /etc/os-release; echo "${VERSION_ID:-43}")"
   echo "  building in a Fedora-$FEDORA_VER distrobox (one-time, a few minutes)..."
@@ -88,26 +88,34 @@ fi
 
 say "2. CU live-manager + OPT250 tools"
 sudo mkdir -p /opt/opt250
-retry curl -fsSL https://raw.githubusercontent.com/WinnieLV/bc250-cu-live-manager/main/bc250-cu-live-manager.sh \
-  -o /tmp/opt250-culive.sh
-sudo install -m755 /tmp/opt250-culive.sh /opt/opt250/cu-live-manager.sh
+if command -v bc250-cu-live-manager >/dev/null 2>&1; then
+  echo "  using Bazzite's bundled CU live-manager ($(command -v bc250-cu-live-manager))"
+else
+  retry curl -fsSL https://raw.githubusercontent.com/WinnieLV/bc250-cu-live-manager/main/bc250-cu-live-manager.sh \
+    -o /tmp/opt250-culive.sh
+  sudo install -m755 /tmp/opt250-culive.sh /opt/opt250/cu-live-manager.sh
+fi
 get opt250-unlock.sh /opt/opt250/opt250-unlock.sh
 get opt250-profile.py /usr/local/bin/opt250-profile
 
-say "3. GPU governor (binary + service)"
-if [ ! -x /etc/cyan-skillfish-governor-smu/cyan-skillfish-governor-smu ]; then
-  T=$(mktemp -d); ( cd "$T"
-    B="https://github.com/filippor/cyan-skillfish-governor/releases/download/${GOV_VER}"
-    retry curl -fsSL -O "$B/cyan-skillfish-governor-smu-${GOV_VER}-x86_64-linux.tar.gz"
-    retry curl -fsSL -O "$B/cyan-skillfish-governor-smu-${GOV_VER}-x86_64-linux.tar.gz.sha256"
-    sha256sum -c ./*.sha256 && tar -xf ./*.tar.gz && cd cyan-skillfish-governor-smu-*/
-    sudo mkdir -p /etc/cyan-skillfish-governor-smu
-    sudo install -m755 cyan-skillfish-governor-smu /etc/cyan-skillfish-governor-smu/ )
-  rm -rf "$T"
+say "3. GPU governor"
+if command -v cyan-skillfish-governor-smu >/dev/null 2>&1; then
+  echo "  using Bazzite's packaged governor ($(rpm -q cyan-skillfish-governor-smu 2>/dev/null || echo present)) — config only"
 else
-  echo "  governor binary already installed"
-fi
-sudo tee /etc/systemd/system/cyan-skillfish-governor-smu.service >/dev/null <<'U'
+  # older Bazzite: install the release binary + our own service unit
+  if [ ! -x /etc/cyan-skillfish-governor-smu/cyan-skillfish-governor-smu ]; then
+    T=$(mktemp -d); ( cd "$T"
+      B="https://github.com/filippor/cyan-skillfish-governor/releases/download/${GOV_VER}"
+      retry curl -fsSL -O "$B/cyan-skillfish-governor-smu-${GOV_VER}-x86_64-linux.tar.gz"
+      retry curl -fsSL -O "$B/cyan-skillfish-governor-smu-${GOV_VER}-x86_64-linux.tar.gz.sha256"
+      sha256sum -c ./*.sha256 && tar -xf ./*.tar.gz && cd cyan-skillfish-governor-smu-*/
+      sudo mkdir -p /etc/cyan-skillfish-governor-smu
+      sudo install -m755 cyan-skillfish-governor-smu /etc/cyan-skillfish-governor-smu/ )
+    rm -rf "$T"
+  else
+    echo "  governor binary already installed"
+  fi
+  sudo tee /etc/systemd/system/cyan-skillfish-governor-smu.service >/dev/null <<'U'
 [Unit]
 Description=Cyan Skillfish GPU Governor
 After=multi-user.target
@@ -119,7 +127,8 @@ RestartSec=5s
 [Install]
 WantedBy=multi-user.target
 U
-sudo systemctl daemon-reload
+  sudo systemctl daemon-reload
+fi
 
 say "4. permanent CU unlock"
 sudo bash /opt/opt250/opt250-unlock.sh

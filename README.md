@@ -25,6 +25,15 @@ Everything survives reboots and OS updates (all state lives in `/etc`,
 
 ## Bazzite (Steam Machine)
 
+Bazzite 43+ ships `umr`, the governor, and the CU live-manager in the base
+image — on those, OPT250 downloads nothing and just drives the bundled tools.
+What it adds over stock Bazzite: **defective-die safety** (Bazzite's built-in
+first-boot unlock enables every WGP blindly, including broken ones on a
+harvested die; OPT250 reads the fuse map and force-disables defects) and a
+**sane clock/voltage envelope** (stock config allows 2200 MHz @ 1000 mV, which
+we've measured at 100 °C+; OPT250 caps at 2000 MHz undervolted — within ~3% of
+the same performance at ~50 W less).
+
 Run as your normal user (not root):
 
 ```bash
